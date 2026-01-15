@@ -1,0 +1,1 @@
+Esse repositório contém todos os arquivos e scripts usados no meu servidor. Apenas para catalogação e backup.
