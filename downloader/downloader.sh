@@ -6,12 +6,13 @@ COOKIE_FILE="$(pwd)/cookies.txt"
 LOG_DIR="$(pwd)/logs"
 mkdir -p "$LOG_DIR"
 
+RED="\e[91m"
+CYAN="\e[96m"
+GRAY="\e[90m"
+RESET="\e[0m"
+
 encode() {
-  printf '%s' "$1" | sed \
-    -e 's/%/%25/g' \
-    -e 's/ /%20/g' \
-    -e 's/\[/%5B/g' \
-    -e 's/\]/%5D/g'
+  jq -rn --arg v "$1" '$v|@uri'
 }
 
 human_size() {
@@ -31,11 +32,8 @@ SEARCH_JSON=$(curl -s -b "$COOKIE_FILE" \
 NAMES=()
 PATHS=()
 
-while IFS= read -r v; do NAMES+=("$v"); done \
-  < <(echo "$SEARCH_JSON" | jq -r '.results[].name')
-
-while IFS= read -r v; do PATHS+=("$v"); done \
-  < <(echo "$SEARCH_JSON" | jq -r '.results[].path')
+mapfile -t NAMES < <(echo "$SEARCH_JSON" | jq -r '.results[].name')
+mapfile -t PATHS < <(echo "$SEARCH_JSON" | jq -r '.results[].path')
 
 if [ ${#NAMES[@]} -eq 0 ]; then
   echo "Nenhum resultado encontrado."
@@ -55,22 +53,108 @@ done
 
 echo
 read -p "Escolha uma opção: " CHOICE
-TARGET_PATH="${PATHS[$((CHOICE-1))]}"
-ENC_TARGET=$(encode "$TARGET_PATH")
+INITIAL_PATH="${PATHS[$((CHOICE-1))]}"
 
 FILES=()
 SIZES=()
 
-while IFS= read -r name && IFS= read -r size; do
-  FILES+=("$name")
-  SIZES+=("$size")
-done < <(
-  curl -s -b "$COOKIE_FILE" \
-    "$BASE_URL/files?path=$ENC_TARGET" |
-  jq -r '.files[]
-    | select(.is_directory == false and .extension == ".mkv")
-    | .name, .size'
-)
+browse_files() {
+  ROOT_PATH="$1"
+  CURRENT_PATH="$1"
+  local return_to_download=false
+
+  while true; do
+    clear
+
+    RESPONSE=$(curl -s -b "$COOKIE_FILE" \
+      "$BASE_URL/files?path=$(encode "$CURRENT_PATH")")
+
+    PARENT_PATH=$(echo "$RESPONSE" | jq -r '.parent // empty')
+
+    echo -e "${RED}Diretório remoto:${RESET} ${CYAN}$CURRENT_PATH${RESET}"
+    
+    MKV_COUNT=$(echo "$RESPONSE" | jq '[.files[] | select(.is_directory == false and (.extension == "mkv" or .extension == ".mkv"))] | length')
+    
+    if [ "$MKV_COUNT" -gt 0 ]; then
+      echo -e "${RED}Comandos:${RESET} [b] voltar | [r] início | [d] baixar MKVs | [q] sair"
+    else
+      echo -e "${RED}Comandos:${RESET} [b] voltar | [r] início | [q] sair"
+    fi
+    
+    echo "----------------------------------------"
+
+    mapfile -t NAMES < <(echo "$RESPONSE" | jq -r '.files[].name')
+    mapfile -t IS_DIR < <(echo "$RESPONSE" | jq -r '.files[].is_directory')
+    mapfile -t EXT < <(echo "$RESPONSE" | jq -r '.files[].extension // empty')
+    mapfile -t SIZE < <(echo "$RESPONSE" | jq -r '.files[].size')
+
+    for i in "${!NAMES[@]}"; do
+      if [ "${IS_DIR[$i]}" = "true" ]; then
+        printf "[%d] ${CYAN}%s/${RESET}\n" $((i+1)) "${NAMES[$i]}"
+      else
+        if [ "${EXT[$i]}" = "mkv" ] || [ "${EXT[$i]}" = ".mkv" ]; then
+          printf "[%d] ${RED}%s${RESET} ${GRAY}(%s)${RESET}\n" \
+            $((i+1)) \
+            "${NAMES[$i]}" \
+            "$(human_size "${SIZE[$i]}")"
+        else
+          printf "[%d] %s ${GRAY}(%s)${RESET}\n" \
+            $((i+1)) \
+            "${NAMES[$i]}" \
+            "$(human_size "${SIZE[$i]}")"
+        fi
+      fi
+    done
+
+    echo
+    read -rp "Escolha: " CHOICE
+
+    case "$CHOICE" in
+      q) return ;;
+      r) CURRENT_PATH="$ROOT_PATH" ;;
+      d)
+        if [ "$MKV_COUNT" -gt 0 ]; then
+          TARGET_PATH="$CURRENT_PATH"
+          return_to_download=true
+          return
+        fi
+        ;;
+      b)
+        if [ "$CURRENT_PATH" != "$ROOT_PATH" ] && [ -n "$PARENT_PATH" ]; then
+          CURRENT_PATH="$PARENT_PATH"
+        fi
+        ;;
+      ''|*[!0-9]*) continue ;;
+      *)
+        IDX=$((CHOICE-1))
+        [ -z "${NAMES[$IDX]}" ] && continue
+
+        if [ "${IS_DIR[$IDX]}" = "true" ]; then
+          CURRENT_PATH="$CURRENT_PATH/${NAMES[$IDX]}"
+        else
+          FULL_PATH="$CURRENT_PATH/${NAMES[$IDX]}"
+          FILES+=("$FULL_PATH")
+          SIZES+=("${SIZE[$IDX]}")
+
+          echo
+          echo -e "${RED}Adicionado:${RESET} ${NAMES[$IDX]}"
+          sleep 1
+        fi
+        ;;
+    esac
+  done
+}
+
+browse_files "$INITIAL_PATH"
+
+if [ ${#FILES[@]} -eq 0 ]; then
+  while IFS= read -r name && IFS= read -r size; do
+    FILES+=("$TARGET_PATH/$name")
+    SIZES+=("$size")
+  done < <( curl -s -b "$COOKIE_FILE" \
+    "$BASE_URL/files?path=$(encode "$TARGET_PATH")" \
+    | jq -r '.files[] | select(.is_directory == false and (.extension == "mkv" or .extension == ".mkv")) | .name, .size' )
+fi
 
 if [ ${#FILES[@]} -eq 0 ]; then
   echo "Nenhum arquivo MKV encontrado."
@@ -111,21 +195,13 @@ BASE_DIR=""
 IS_ANIME=false
 
 case "$DEST" in
-  1)
-    BASE_DIR="/mnt/e/Animes"
-    IS_ANIME=true
-    ;;
-  2)
-    BASE_DIR="/mnt/e/Filmes"
-    ;;
+  1) BASE_DIR="/mnt/e/Animes"; IS_ANIME=true ;;
+  2) BASE_DIR="/mnt/e/Filmes" ;;
   3)
     read -e -p "Diretório base: " BASE_DIR
     BASE_DIR="${BASE_DIR/#\~/$HOME}"
     ;;
-  *)
-    echo "Opção inválida."
-    exit 1
-    ;;
+  *) echo "Opção inválida."; exit 1 ;;
 esac
 
 SEASON=""
@@ -144,14 +220,11 @@ if [ ! -w "$FINAL_DIR" ]; then
 fi
 
 RENAMED=()
-
 if $IS_ANIME; then
   EP=1
   for f in "${SELECTED[@]}"; do
     EXT="${f##*.}"
-    RENAMED+=(
-      "$(printf "%s - S%02dE%02d.%s" "$PADRAO" "$SEASON" "$EP" "$EXT")"
-    )
+    RENAMED+=( "$(printf "%s - S%02dE%02d.%s" "$PADRAO" "$SEASON" "$EP" "$EXT")" )
     ((EP++))
   done
 else
@@ -167,23 +240,20 @@ LOG_FILE="$LOG_DIR/download_$(date +%Y%m%d_%H%M%S).log"
   echo "BASE_URL=\"$BASE_URL\""
   echo "COOKIE_FILE=\"$COOKIE_FILE\""
   declare -f encode
-
+  
   for i in "${!SELECTED[@]}"; do
     SRC="${SELECTED[$i]}"
     DST="${RENAMED[$i]}"
-    FULL="$TARGET_PATH/$SRC"
     echo "echo \"Baixando: $DST\""
-    echo "curl -L -b \"$COOKIE_FILE\" -o \"$FINAL_DIR/$DST\" \"$BASE_URL/download?path=$(encode "$FULL")\""
+    echo "curl -L -b \"$COOKIE_FILE\" -o \"$FINAL_DIR/$DST\" \"$BASE_URL/download?path=$(encode "$SRC")\""
   done
-
+  
   echo 'echo "Downloads finalizados."'
 } > "$JOB_SCRIPT"
 
 chmod +x "$JOB_SCRIPT"
-
 "$JOB_SCRIPT" > "$LOG_FILE" 2>&1 &
 
 echo
 echo "Downloads iniciados."
 echo "Destino: $FINAL_DIR"
-
