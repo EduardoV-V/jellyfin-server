@@ -1,9 +1,9 @@
 #!/bin/bash
 
 BASE_URL="https://nuvem.anitsu.moe/api"
-COOKIE_FILE="$HOME/cookies.txt"
+COOKIE_FILE="$(pwd)/cookies.txt"
 
-LOG_DIR="$HOME/logs"
+LOG_DIR="$(pwd)/logs"
 mkdir -p "$LOG_DIR"
 
 encode() {
@@ -23,7 +23,7 @@ human_size() {
   fi
 }
 
-read -p "Pesquisar anime: " QUERY
+read -p "Pesquisar: " QUERY
 
 SEARCH_JSON=$(curl -s -b "$COOKIE_FILE" \
   "$BASE_URL/search?q=$(encode "$QUERY")")
@@ -99,12 +99,53 @@ else
 fi
 
 echo
-read -p "Nome padrão do anime: " PADRAO
-read -p "Temporada (número): " SEASON
+read -p "Nome padrão: " PADRAO
+
+echo
+echo "[1] Animes"
+echo "[2] Filmes"
+echo "[3] Digitar caminho manual"
+read -p "Destino: " DEST
+
+BASE_DIR=""
+IS_ANIME=false
+
+case "$DEST" in
+  1)
+    BASE_DIR="/mnt/e/Animes"
+    IS_ANIME=true
+    ;;
+  2)
+    BASE_DIR="/mnt/e/Filmes"
+    ;;
+  3)
+    read -e -p "Diretório base: " BASE_DIR
+    BASE_DIR="${BASE_DIR/#\~/$HOME}"
+    ;;
+  *)
+    echo "Opção inválida."
+    exit 1
+    ;;
+esac
+
+SEASON=""
+if $IS_ANIME; then
+  read -p "Temporada: " SEASON
+  FINAL_DIR="$BASE_DIR/$PADRAO/Season $SEASON"
+else
+  FINAL_DIR="$BASE_DIR/$PADRAO"
+fi
+
+mkdir -p "$FINAL_DIR"
+
+if [ ! -w "$FINAL_DIR" ]; then
+  echo "Erro: diretório não gravável."
+  exit 1
+fi
 
 RENAMED=()
 
-if [ "$MODE" = "a" ] || [ "${#SELECTED[@]}" -gt 1 ]; then
+if $IS_ANIME; then
   EP=1
   for f in "${SELECTED[@]}"; do
     EXT="${f##*.}"
@@ -114,42 +155,25 @@ if [ "$MODE" = "a" ] || [ "${#SELECTED[@]}" -gt 1 ]; then
     ((EP++))
   done
 else
-  read -p "Número do episódio: " EP
-  f="${SELECTED[0]}"
-  EXT="${f##*.}"
-  RENAMED+=(
-    "$(printf "%s - S%02dE%02d.%s" "$PADRAO" "$SEASON" "$EP" "$EXT")"
-  )
+  EXT="${SELECTED[0]##*.}"
+  RENAMED+=("$PADRAO.$EXT")
 fi
-
-echo
-read -p "Diretório de download: " DOWNLOAD_DIR
-DOWNLOAD_DIR="${DOWNLOAD_DIR/#\~/$HOME}"
-mkdir -p "$DOWNLOAD_DIR"
 
 JOB_SCRIPT="$LOG_DIR/job_$(date +%s).sh"
 LOG_FILE="$LOG_DIR/download_$(date +%Y%m%d_%H%M%S).log"
-
-echo
-echo "Iniciando downloads em background"
-echo "Log: $LOG_FILE"
-echo
 
 {
   echo '#!/usr/bin/env bash'
   echo "BASE_URL=\"$BASE_URL\""
   echo "COOKIE_FILE=\"$COOKIE_FILE\""
-  echo
   declare -f encode
-  echo
 
   for i in "${!SELECTED[@]}"; do
     SRC="${SELECTED[$i]}"
     DST="${RENAMED[$i]}"
     FULL="$TARGET_PATH/$SRC"
     echo "echo \"Baixando: $DST\""
-    echo "curl -L -b \"$COOKIE_FILE\" -o \"$DOWNLOAD_DIR/$DST\" \"$BASE_URL/download?path=$(encode "$FULL")\""
-    echo
+    echo "curl -L -b \"$COOKIE_FILE\" -o \"$FINAL_DIR/$DST\" \"$BASE_URL/download?path=$(encode "$FULL")\""
   done
 
   echo 'echo "Downloads finalizados."'
@@ -159,7 +183,7 @@ chmod +x "$JOB_SCRIPT"
 
 "$JOB_SCRIPT" > "$LOG_FILE" 2>&1 &
 
-BG_PID=$!
+echo
+echo "Downloads iniciados."
+echo "Destino: $FINAL_DIR"
 
-echo "Downloads iniciados com sucesso."
-echo "PID: $BG_PID"
