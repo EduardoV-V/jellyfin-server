@@ -345,7 +345,7 @@ chmod +x "$JOB_SCRIPT"
 echo
 echo "Iniciando downloads com aria2..."
 echo "Para monitorar: tail -f $LOG_FILE"
-echo "PID: $DOWNLOAD_PID"
 
 "$JOB_SCRIPT" > "$LOG_FILE" 2>&1 &
 DOWNLOAD_PID=$!
+echo "PID: $DOWNLOAD_PID"
