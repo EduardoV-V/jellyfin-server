@@ -24,6 +24,23 @@ human_size() {
   fi
 }
 
+# Função para extrair todos os cookies no formato correto
+get_cookie_header() {
+    if [ -f "$COOKIE_FILE" ]; then
+        # Extrair todos os cookies válidos do arquivo Netscape
+        grep -v '^#' "$COOKIE_FILE" | grep -v '^$' | awk '{print $6 "=" $7}' | tr '\n' '; ' | sed 's/; $//'
+    else
+        echo ""
+    fi
+}
+
+check_aria2() {
+  if ! command -v aria2c &> /dev/null; then
+    echo "Instalando aria2 para downloads mais rápidos..."
+    sudo apt update && sudo apt install aria2 -y
+  fi
+}
+
 read -p "Pesquisar: " QUERY
 
 SEARCH_JSON=$(curl -s -b "$COOKIE_FILE" \
@@ -232,28 +249,103 @@ else
   RENAMED+=("$PADRAO.$EXT")
 fi
 
+check_aria2
+COOKIE_HEADER=$(get_cookie_header)
+
+if [ -z "$COOKIE_HEADER" ]; then
+    echo "ERRO: Não foi possível extrair cookie"
+    exit 1
+fi
+
 JOB_SCRIPT="$LOG_DIR/job_$(date +%s).sh"
 LOG_FILE="$LOG_DIR/download_$(date +%Y%m%d_%H%M%S).log"
+ARIA2_SESSION="$LOG_DIR/aria2_session_$(date +%s).txt"
 
 {
   echo '#!/usr/bin/env bash'
   echo "BASE_URL=\"$BASE_URL\""
   echo "COOKIE_FILE=\"$COOKIE_FILE\""
-  declare -f encode
+  echo "FINAL_DIR=\"$FINAL_DIR\""
+  echo "COOKIE_HEADER=\"$COOKIE_HEADER\""
+  echo "ARIA2_SESSION=\"$ARIA2_SESSION\""
+  declare -f encode human_size
   
+  echo 'echo "Iniciando downloads com aria2..."'
+  echo 'echo "Data: $(date)"'
+  echo 'echo "=========================================="'
+  
+  echo 'if command -v aria2c &> /dev/null; then'
+  echo '  echo "Configurando aria2 para downloads paralelos..."'
+  
+  # Criar arquivo de input para aria2 (todos os downloads de uma vez)
+  echo '  INPUT_FILE="'"$LOG_DIR"'/aria2_input_$(date +%s).txt"'
+  
+  # Preparar URLs para download paralelo
+  echo '  echo "# Arquivos para download" > "$INPUT_FILE"'
   for i in "${!SELECTED[@]}"; do
     SRC="${SELECTED[$i]}"
     DST="${RENAMED[$i]}"
-    echo "echo \"Baixando: $DST\""
-    echo "curl -L -b \"$COOKIE_FILE\" -o \"$FINAL_DIR/$DST\" \"$BASE_URL/download?path=$(encode "$SRC")\""
+    URL="$BASE_URL/download?path=$(encode "$SRC")"
+    echo "  echo \"$URL\" >> \"\$INPUT_FILE\""
+    echo "  echo \"  dir=\$FINAL_DIR\" >> \"\$INPUT_FILE\""
+    echo "  echo \"  out=$DST\" >> \"\$INPUT_FILE\""
   done
   
-  echo 'echo "Downloads finalizados."'
+  echo '  echo "Iniciando download de ${#SELECTED[@]} arquivos em paralelo..."'
+  
+  # Comando aria2 otimizado
+  echo '  aria2c --input-file="$INPUT_FILE" \'
+  echo '    --header="Cookie: $COOKIE_HEADER" \'
+  echo '    --header="User-Agent: Mozilla/5.0" \'
+  echo '    --header="Referer: https://nuvem.anitsu.moe" \'
+  echo '    --check-certificate=false \'
+  echo '    --max-tries=5 \'
+  echo '    --retry-wait=3 \'
+  echo '    --timeout=60 \'
+  echo '    --connect-timeout=30 \'
+  echo '    --max-connection-per-server=16 \'
+  echo '    --min-split-size=2M \'
+  echo '    --split=16 \'
+  echo '    --max-concurrent-downloads=5 \'
+  echo '    --file-allocation=prealloc \'
+  echo '    --continue=true \'
+  echo '    --save-session="$ARIA2_SESSION" \'
+  echo '    --auto-save-interval=10 \'
+  echo '    --console-log-level=notice \'
+  echo '    --summary-interval=30'
+  
+  echo '  rm -f "$INPUT_FILE"'
+  echo 'else'
+  echo '  echo "Aria2 não encontrado, usando curl..."'
+  echo '  for i in "${!SELECTED[@]}"; do'
+  echo '    SRC="${SELECTED[$i]}"'
+  echo '    DST="${RENAMED[$i]}"'
+  echo '    echo "Baixando: $DST"'
+  echo '    curl -L -b "$COOKIE_FILE" \'
+  echo '      --connect-timeout 60 \'
+  echo '      --max-time 3600 \'
+  echo '      --retry 5 \'
+  echo '      --retry-delay 2 \'
+  echo '      --retry-max-time 7200 \'
+  echo '      --progress-bar \'
+  echo '      -o "$FINAL_DIR/$DST" \'
+  echo '      "$BASE_URL/download?path=$(encode "$SRC")"'
+  echo '    echo "------------------------------------------"'
+  echo '  done'
+  echo 'fi'
+  
+  echo 'echo "=========================================="'
+  echo 'echo "Downloads finalizados em: $(date)"'
+  echo 'echo "Total de arquivos baixados: '${#SELECTED[@]}'"'
+  echo 'echo "Destino: $FINAL_DIR"'
 } > "$JOB_SCRIPT"
 
 chmod +x "$JOB_SCRIPT"
-"$JOB_SCRIPT" > "$LOG_FILE" 2>&1 &
 
 echo
-echo "Downloads iniciados."
-echo "Destino: $FINAL_DIR"
+echo "Iniciando downloads com aria2..."
+echo "Para monitorar: tail -f $LOG_FILE"
+echo "PID: $DOWNLOAD_PID"
+
+"$JOB_SCRIPT" > "$LOG_FILE" 2>&1 &
+DOWNLOAD_PID=$!
