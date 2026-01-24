@@ -5,7 +5,8 @@ DISTRO="ubuntu"
 BIND_STORAGE="/sdcard:/storage"
 HD_MOUNT="/mnt/media_rw/6B67-FA2F:/mnt/hd_externo"
 JELLYFIN_SCRIPT="/opt/jellyfin/jellyfin.sh"
-LOG_FILE="$HOME/jellyfin.log"
+LOG_FILE="$HOME/jellyfin/jellyfin.log"
+PID_FILE="$HOME/jellyfin/jellyfin.pid"
 
 # Governor padrão do sistema (normalmente schedutil)
 DEFAULT_GOVERNOR="schedutil"
@@ -60,16 +61,24 @@ start() {
             exec $JELLYFIN_SCRIPT
         " >"$LOG_FILE" 2>&1 &
 
+    JELLYFIN_PID=$!
+    echo "$JELLYFIN_PID" > "$PID_FILE"
+
     echo "Jellyfin iniciado! Logs em $LOG_FILE"
 }
 
 stop() {
     echo "Parando Jellyfin..."
-    proot-distro login "$DISTRO" -- bash -c "pkill -f jellyfin"
 
-    sleep 2
+    if [ -f "$PID_FILE" ]; then
+        JELLYFIN_PID=$(cat "$PID_FILE")
+        kill -9 "$JELLYFIN_PID" 2>/dev/null
+    fi
+
+    sleep 1
 
     restore_normal_mode
+    rm -f "$PID_FILE"
 
     echo "Jellyfin parado!"
 }
