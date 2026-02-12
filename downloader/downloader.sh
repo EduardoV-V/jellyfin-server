@@ -111,14 +111,10 @@ browse_files() {
       else
         if [ "${EXT[$i]}" = "mkv" ] || [ "${EXT[$i]}" = ".mkv" ]; then
           printf "[%d] ${RED}%s${RESET} ${GRAY}(%s)${RESET}\n" \
-            $((i+1)) \
-            "${NAMES[$i]}" \
-            "$(human_size "${SIZE[$i]}")"
+            $((i+1)) "${NAMES[$i]}" "$(human_size "${SIZE[$i]}")"
         else
           printf "[%d] %s ${GRAY}(%s)${RESET}\n" \
-            $((i+1)) \
-            "${NAMES[$i]}" \
-            "$(human_size "${SIZE[$i]}")"
+            $((i+1)) "${NAMES[$i]}" "$(human_size "${SIZE[$i]}")"
         fi
       fi
     done
@@ -128,7 +124,11 @@ browse_files() {
 
     case "$CHOICE" in
       q) return ;;
-      r) CURRENT_PATH="$ROOT_PATH" ;;
+
+      r)
+        CURRENT_PATH="$ROOT_PATH"
+        ;;
+
       d)
         if [ "$MKV_COUNT" -gt 0 ]; then
           TARGET_PATH="$CURRENT_PATH"
@@ -136,12 +136,15 @@ browse_files() {
           return
         fi
         ;;
+
       b)
-        if [ "$CURRENT_PATH" != "$ROOT_PATH" ] && [ -n "$PARENT_PATH" ]; then
+        if [ -n "$PARENT_PATH" ]; then
           CURRENT_PATH="$PARENT_PATH"
         fi
         ;;
+
       ''|*[!0-9]*) continue ;;
+
       *)
         IDX=$((CHOICE-1))
         [ -z "${NAMES[$IDX]}" ] && continue
