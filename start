@@ -1,0 +1,7 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+nohup python3 sonarr-feed.py > feed.log 2>&1 &
+
+sleep 3
+
+nohup ./glance > glance.log 2>&1 &

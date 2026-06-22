@@ -1,0 +1,160 @@
+server:
+  host: 0.0.0.0
+  port: 8181
+
+pages:
+  - name: Dashboard
+    columns:
+
+      - size: small
+        widgets:
+
+          - type: monitor
+            title: Services
+            cache: 30s
+            sites:
+              - title: Jellyfin
+                url: http://127.0.0.1:8096
+
+              - title: Sonarr
+                url: http://127.0.0.1:8989
+
+              - title: Radarr
+                url: http://127.0.0.1:7878
+
+              - title: Prowlarr
+                url: http://127.0.0.1:9696
+
+              - title: qBittorrent
+                url: http://127.0.0.1:8080
+
+          - type: bookmarks
+            groups:
+              - title: Media Stack
+                links:
+                  - title: Jellyfin
+                    url: http://jellyfin.home/
+
+                  - title: Sonarr
+                    url: http://sonarr.home/
+
+                  - title: Radarr
+                    url: http://radarr.home/
+
+                  - title: Prowlarr
+                    url: http://prowlarr.home/
+
+                  - title: qBittorrent
+                    url: http://qbittorrent.home/
+
+      - size: full
+        widgets:
+
+          - type: search
+            search-engine: duckduckgo
+            new-tab: true
+
+          - type: extension
+            title: Releases
+            url: http://127.0.0.1:5050
+            cache: 30m
+            allow-potentially-dangerous-html: true
+
+          - type: videos
+            channels:
+              - UCV3XpRxabX2UMbimv2k215Q #kksaiko
+              - UCI4aITQ3nx1QR_8RxFlPjRQ #hens333
+              - UCwhYSrP7BT480a75aFAvIeg #notHens
+              - UCtKndmEnQyqkhOQfpi5CgvQ #DaviGamer_HD
+              - UCMN9G_bG0pB0AXI3v05ePSQ #profHens
+              - UCiIZY89KwQkxAW-4Le7U7zg #viniccius13
+              - UCDO__Z-tZD4bfG9m4AkK_uA #not Otzdarva
+              - UC0ebbAvOetLbyH8VH9IAx8w #epidemy
+              - UCDsMKIpr1ZHXHpACszKpRUw #JRM
+
+          - type: rss
+            title: Reddit Selfhosted
+            limit: 10
+            feeds:
+              - url: https://www.reddit.com/r/selfhosted/.rss
+                title: r/selfhosted
+
+              - url: https://www.reddit.com/r/homelab/.rss
+                title: r/homelab
+
+          - type: rss
+            title: Linux News
+            limit: 10
+            collapse-after: 5
+            cache: 6h
+            feeds:
+              - url: https://selfh.st/rss/
+                title: selfh.st
+
+              - url: https://www.omgubuntu.co.uk/feed
+                title: OMG! Ubuntu
+
+              - url: https://itsfoss.com/rss/
+                title: It's FOSS
+
+      - size: small
+        widgets:
+
+          - type: weather
+            location: Rio de Janeiro
+            units: metric
+            hour-format: 24h
+
+          - type: releases
+            cache: 1d
+            repositories:
+              - jellyfin/jellyfin
+              - qbittorrent/qBittorrent
+              - sonarr/sonarr
+              - radarr/radarr
+              - prowlarr/prowlarr
+              - glanceapp/glance
+
+  - name: Monitoring
+    columns:
+
+      - size: full
+        widgets:
+
+          - type: monitor
+            title: Media Services
+            cache: 15s
+            sites:
+              - title: Jellyfin
+                url: http://127.0.0.1:8096/health
+
+              - title: Sonarr
+                url: http://127.0.0.1:8989/ping
+
+              - title: Radarr
+                url: http://127.0.0.1:7878/ping
+
+              - title: Prowlarr
+                url: http://127.0.0.1:9696/ping
+
+              - title: qBittorrent
+                url: http://127.0.0.1:8080
+
+          - type: bookmarks
+            groups:
+              - title: Direct Access
+                links:
+                  - title: Jellyfin
+                    url: http://jellyfin.home
+
+                  - title: Sonarr
+                    url: http://sonarr.home
+
+                  - title: Radarr
+                    url: http://radarr.home
+
+                  - title: Prowlarr
+                    url: http://prowlarr.home
+
+                  - title: qBittorrent
+                    url: http://qbittorrent.home
