@@ -16,6 +16,9 @@ pages:
               - title: Jellyfin
                 url: http://127.0.0.1:8096
 
+              - title: Downloader
+                url: http://127.0.0.1:7070
+
               - title: Sonarr
                 url: http://127.0.0.1:8989
 
@@ -27,6 +30,33 @@ pages:
 
               - title: qBittorrent
                 url: http://127.0.0.1:8080
+
+          - type: server-stats
+            title: Servers
+            cache: 1s
+            servers:
+
+              - type: local
+                name: MELCHIOR-1
+                hide-swap: false
+                hide-mountpoints-by-default: true
+                mountpoints:
+                  "/storage/emulated/0":
+                    name: Internal Storage
+                    hide: false
+                  "/storage/B3EE-1A06":
+                    name: SD Card
+                    hide: false
+
+              - type: remote
+                name: BALTHASAR-2
+                url: http://192.168.1.198:8282
+                timeout: 5s
+
+              - type: remote
+                name: CASPER-3
+                url: http://127.0.0.1:8283
+                timeout: 2s
 
           - type: bookmarks
             groups:
@@ -57,30 +87,22 @@ pages:
           - type: extension
             title: Releases
             url: http://127.0.0.1:5050
-            cache: 30m
+            cache: 10s
             allow-potentially-dangerous-html: true
 
           - type: videos
             channels:
-              - UCV3XpRxabX2UMbimv2k215Q #kksaiko
-              - UCI4aITQ3nx1QR_8RxFlPjRQ #hens333
-              - UCwhYSrP7BT480a75aFAvIeg #notHens
-              - UCtKndmEnQyqkhOQfpi5CgvQ #DaviGamer_HD
-              - UCMN9G_bG0pB0AXI3v05ePSQ #profHens
-              - UCiIZY89KwQkxAW-4Le7U7zg #viniccius13
-              - UCDO__Z-tZD4bfG9m4AkK_uA #not Otzdarva
-              - UC0ebbAvOetLbyH8VH9IAx8w #epidemy
-              - UCDsMKIpr1ZHXHpACszKpRUw #JRM
-
-          - type: rss
-            title: Reddit Selfhosted
-            limit: 10
-            feeds:
-              - url: https://www.reddit.com/r/selfhosted/.rss
-                title: r/selfhosted
-
-              - url: https://www.reddit.com/r/homelab/.rss
-                title: r/homelab
+              - UCV3XpRxabX2UMbimv2k215Q
+              - UCI4aITQ3nx1QR_8RxFlPjRQ
+              - UCwhYSrP7BT480a75aFAvIeg
+              - UCtKndmEnQyqkhOQfpi5CgvQ
+              - UCMN9G_bG0pB0AXI3v05ePSQ
+              - UCiIZY89KwQkxAW-4Le7U7zg
+              - UCDO__Z-tZD4bfG9m4AkK_uA
+              - UC0ebbAvOetLbyH8VH9IAx8w
+              - UCDsMKIpr1ZHXHpACszKpRUw
+              - UCgSAH94ZjV6-w46hPJ0-ffQ
+              - UC2mt2OjI5JHIxW7lUfW5IDw
 
           - type: rss
             title: Linux News
@@ -139,6 +161,25 @@ pages:
 
               - title: qBittorrent
                 url: http://127.0.0.1:8080
+
+          - type: monitor
+            title: DNS
+            cache: 15s
+            sites:
+              - title: Jellyfin
+                url: http://jellyfin.home/health
+
+              - title: Sonarr
+                url: http://sonarr.home/ping
+
+              - title: Radarr
+                url: http://radarr.home/ping
+
+              - title: Prowlarr
+                url: http://prowlarr.home/ping
+
+              - title: qBittorrent
+                url: http://qbittorrent.home
 
           - type: bookmarks
             groups:

@@ -1,3 +1,4 @@
-2026/06/15 22:54:32 Starting server on 0.0.0.0:8181 (base-url: "", assets-path: "")
-2026/06/15 22:54:34 ERROR Failed to get RSS feed url=https://www.reddit.com/r/selfhosted/.rss error="unexpected status code 429 from https://www.reddit.com/r/selfhosted/.rss"
-2026/06/15 23:00:07 ERROR Failed to get RSS feed url=https://www.reddit.com/r/homelab/.rss error="unexpected status code 429 from https://www.reddit.com/r/homelab/.rss"
+2026/11/12 20:47:59 Starting server on 0.0.0.0:8181 (base-url: "", assets-path: "")
+2026/11/12 22:46:36 WARN Getting system info: getting swap memory info: couldn't read /proc/vmstat: open /proc/vmstat: permission denied
+2026/11/12 22:46:36 WARN Getting remote system info: Get "http://127.0.0.1:8283/api/sysinfo/all": dial tcp 127.0.0.1:8283: connect: connection refused
+2026/11/12 22:46:38 WARN Getting remote system info: Get "http://192.168.1.198:8282/api/sysinfo/all": dial tcp 192.168.1.198:8282: connect: no route to host
