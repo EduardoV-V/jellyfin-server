@@ -1,4 +1,5 @@
 from flask import Flask, Response
+from html import escape
 import requests
 from datetime import datetime, timezone, timedelta
 
@@ -25,7 +26,7 @@ JELLYFIN_SERVERS = [
         "root_paths": [
             "/data/data/com.termux/files/home/storage/downloads/Animes",
             "/mnt/media/Download/Animes",
-	    "/mnt/media_rw/6BF1-F2CE/Animes",
+            "/mnt/media_rw/6BF1-F2CE/Animes",
         ],
     },
 ]
@@ -346,6 +347,181 @@ def home():
     resp.headers["Widget-Title"] = "Episódios Recentes"
     resp.headers["Widget-Content-Type"] = "html"
     return resp
+
+
+# ---------------------------------------------------------------------------
+# Feed de filmes e séries adicionados recentemente ao Jellyfin
+# ---------------------------------------------------------------------------
+
+RECENT_MEDIA_MAX_ITEMS = 15
+RECENT_MEDIA_CACHE_TTL_SECONDS = 60
+_recent_media_cache = {"data": [], "ts": 0}
+
+
+def parse_jellyfin_datetime(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_recent_media():
+    """Busca os itens Series e Movie mais recentemente adicionados."""
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    if (
+        _recent_media_cache["data"]
+        and now_ts - _recent_media_cache["ts"] < RECENT_MEDIA_CACHE_TTL_SECONDS
+    ):
+        return _recent_media_cache["data"]
+
+    collected = []
+
+    for server in JELLYFIN_SERVERS:
+        try:
+            r = requests.get(
+                f"{server['internal']}/Items",
+                params={
+                    "IncludeItemTypes": "Series,Movie",
+                    "Recursive": "true",
+                    "SortBy": "DateCreated",
+                    "SortOrder": "Descending",
+                    "Limit": RECENT_MEDIA_MAX_ITEMS,
+                    "Fields": "DateCreated,ProductionYear",
+                },
+                headers=auth_header(server),
+                timeout=12,
+            )
+
+            if r.status_code != 200:
+                dbg(
+                    f"get_recent_media({server['key']}): "
+                    f"HTTP {r.status_code} ao consultar /Items"
+                )
+                continue
+
+            server_id = get_server_id(server)
+            public_url = server["public"].rstrip("/")
+
+            for item in r.json().get("Items", []):
+                if item.get("Type") not in ("Series", "Movie"):
+                    continue
+
+                created = parse_jellyfin_datetime(item.get("DateCreated"))
+                item_id = item.get("Id")
+                if created is None or not item_id:
+                    continue
+
+                image_url = (
+                    f"{public_url}/Items/{item_id}/Images/Primary"
+                    f"?ApiKey={server['api_key']}&fillWidth=300&quality=90"
+                )
+                jellyfin_link = (
+                    f"{public_url}/web/#/details"
+                    f"?id={item_id}&serverId={server_id}"
+                )
+
+                collected.append({
+                    "id": item_id,
+                    "server_key": server["key"],
+                    "title": item.get("Name") or "Sem título",
+                    "type": item["Type"],
+                    "year": item.get("ProductionYear"),
+                    "unix_ts": int(created.timestamp()),
+                    "thumb": image_url,
+                    "link": jellyfin_link,
+                })
+
+        except Exception as e:
+            dbg(f"get_recent_media({server['key']}): falha -> {e}")
+            print(f"recent_media error ({server['key']}):", e)
+
+    # Consolida os resultados dos servidores e ordena globalmente por DateCreated.
+    unique = {
+        (item["server_key"], item["id"]): item
+        for item in collected
+    }
+    recent = sorted(
+        unique.values(),
+        key=lambda item: item["unix_ts"],
+        reverse=True,
+    )[:RECENT_MEDIA_MAX_ITEMS]
+
+    # Se todos os servidores falharem, mantém o último resultado válido em cache.
+    if recent:
+        _recent_media_cache["data"] = recent
+        _recent_media_cache["ts"] = now_ts
+
+    return _recent_media_cache["data"]
+
+
+def build_recent_media_html(media_items):
+    if not media_items:
+        return '<p class="color-subdue">Nenhum filme ou série recente encontrado.</p>'
+
+    card_width = 150
+    poster_height = 225
+    cards = []
+
+    for item in media_items:
+        title = escape(str(item["title"]), quote=True)
+        link = escape(str(item["link"]), quote=True)
+        thumb = escape(str(item["thumb"]), quote=True)
+
+        kind = "SÉRIE" if item["type"] == "Series" else "FILME"
+        year = str(item.get("year") or "")
+
+        poster = (
+            f'<img src="{thumb}" alt="" loading="lazy" '
+            f'style="width:100%;height:100%;object-fit:cover;display:block;">'
+        )
+
+        cards.append(
+            f'<li style="flex:0 0 auto;width:{card_width}px;">'
+            f'<a href="{link}" target="_blank" rel="noopener" '
+            f'style="display:flex;flex-direction:column;gap:8px;'
+            f'text-decoration:none;color:inherit;">'
+            f'<div style="position:relative;width:{card_width}px;'
+            f'height:{poster_height}px;border-radius:7px;overflow:hidden;'
+            f'background:var(--color-widget-background-alt,#1e1e1e);">'
+            f'{poster}'
+            f'<span style="position:absolute;top:6px;left:6px;'
+            f'font-size:0.65rem;padding:3px 6px;border-radius:4px;'
+            f'background:rgba(0,0,0,0.75);color:#fff;font-weight:700;'
+            f'letter-spacing:0.04em;">{kind}</span>'
+            f'</div>'
+            f'<div style="display:flex;flex-direction:column;gap:3px;padding:0 2px;">'
+            f'<p class="size-h4" style="margin:0;line-height:1.3;'
+            f'overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;'
+            f'-webkit-box-orient:vertical;font-weight:500;">{title}</p>'
+            f'<p class="size-h6 color-subdue" style="margin:0;">{year}</p>'
+            f'<p class="size-h6 color-subdue" style="margin:0;">'
+            f'<span data-dynamic-relative-time="{item["unix_ts"]}"></span></p>'
+            f'</div></a></li>'
+        )
+
+    return (
+        '<ul style="display:flex;flex-direction:row;gap:16px;overflow-x:auto;'
+        'padding:2px 0 10px 0;margin:0;list-style:none;scrollbar-width:thin;'
+        'scrollbar-color:var(--color-widget-background-alt) transparent;">'
+        + "\n".join(cards)
+        + "</ul>"
+    )
+
+
+@app.route("/recent-media")
+def recent_media():
+    html_body = build_recent_media_html(get_recent_media())
+    resp = Response(html_body, mimetype="text/html")
+    resp.headers["Widget-Title"] = "Adicionados Recentemente"
+    resp.headers["Widget-Content-Type"] = "html"
+    return resp
+
 
 
 if __name__ == "__main__":

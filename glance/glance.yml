@@ -1,3 +1,4 @@
+
 server:
   host: 0.0.0.0
   port: 8181
@@ -21,7 +22,6 @@ pages:
 
               - title: Sonarr
                 url: http://127.0.0.1:8989
-
               - title: Radarr
                 url: http://127.0.0.1:7878
 
@@ -35,7 +35,6 @@ pages:
             title: Servers
             cache: 1s
             servers:
-
               - type: local
                 name: MELCHIOR-1
                 hide-swap: false
@@ -64,18 +63,14 @@ pages:
                 links:
                   - title: Jellyfin
                     url: http://jellyfin.home/
-
                   - title: Sonarr
                     url: http://sonarr.home/
-
                   - title: Radarr
                     url: http://radarr.home/
-
                   - title: Prowlarr
                     url: http://prowlarr.home/
-
                   - title: qBittorrent
-                    url: http://qbittorrent.home/
+                    url: http://qbittorrent.home
 
       - size: full
         widgets:
@@ -88,6 +83,12 @@ pages:
             title: Releases
             url: http://127.0.0.1:5050
             cache: 10s
+            allow-potentially-dangerous-html: true
+
+          - type: extension
+            title: Adicionados Recentemente
+            url: http://127.0.0.1:5050/recent-media
+            cache: 1m
             allow-potentially-dangerous-html: true
 
           - type: videos
@@ -199,3 +200,4 @@ pages:
 
                   - title: qBittorrent
                     url: http://qbittorrent.home
+
