@@ -1,3 +1,4 @@
+
 from flask import Flask, Response
 from html import escape
 import requests
@@ -42,9 +43,10 @@ def dbg(*args):
     if DEBUG:
         print("[DEBUG]", *args)
 
+
 # Caches por servidor
-_jellyfin_server_id_cache = {}   # server_key -> Id
-_series_map_cache = {}           # server_key -> {"data": {tvdbId: jellyfin_series_id}, "ts": epoch_seconds}
+_jellyfin_server_id_cache = {}
+_series_map_cache = {}
 
 
 def auth_header(server: dict) -> dict:
@@ -59,6 +61,7 @@ def pick_server(series_path: str) -> dict:
                 if series_path.startswith(root):
                     dbg(f"path='{series_path}' -> {server['key']} (bateu com root '{root}')")
                     return server
+
     # fallback: se não bater com nenhum root_path conhecido, usa o primeiro servidor
     dbg(f"path='{series_path}' -> NENHUM root_path bateu, usando fallback {JELLYFIN_SERVERS[0]['key']}")
     return JELLYFIN_SERVERS[0]
@@ -66,32 +69,37 @@ def pick_server(series_path: str) -> dict:
 
 def get_server_id(server: dict) -> str:
     key = server["key"]
+
     if key in _jellyfin_server_id_cache:
         return _jellyfin_server_id_cache[key]
+
     try:
         r = requests.get(
             f"{server['internal']}/System/Info/Public",
             timeout=5,
         )
+
         if r.status_code == 200:
             _jellyfin_server_id_cache[key] = r.json().get("Id", "")
+
     except Exception:
         pass
+
     return _jellyfin_server_id_cache.get(key, "")
 
 
 def get_series_map(server: dict) -> dict:
-    """Busca TODAS as séries do Jellyfin (de um servidor) e monta tvdbId → jellyfin_id.
-    Recarrega automaticamente a cada CACHE_TTL_SECONDS, para pegar séries/episódios
-    novos que o Jellyfin escaneou depois que o script já estava rodando."""
+    """Busca TODAS as séries do Jellyfin e monta tvdbId → jellyfin_id."""
     key = server["key"]
     now = datetime.now(timezone.utc).timestamp()
 
     cached = _series_map_cache.get(key)
+
     if cached is not None and (now - cached["ts"]) < CACHE_TTL_SECONDS:
         return cached["data"]
 
     series_map = {}
+
     try:
         r = requests.get(
             f"{server['internal']}/Items",
@@ -103,26 +111,37 @@ def get_series_map(server: dict) -> dict:
             headers=auth_header(server),
             timeout=10,
         )
+
         if r.status_code == 200:
             total_items = len(r.json().get("Items", []))
+
             for item in r.json().get("Items", []):
                 tvdb = item.get("ProviderIds", {}).get("Tvdb")
+
                 if tvdb:
                     series_map[str(tvdb)] = item["Id"]
-            dbg(f"get_series_map({key}): {total_items} séries retornadas, "
-                f"{len(series_map)} com Tvdb preenchido (cache recarregado)")
+
+            dbg(
+                f"get_series_map({key}): {total_items} séries retornadas, "
+                f"{len(series_map)} com Tvdb preenchido (cache recarregado)"
+            )
+
         else:
-            dbg(f"get_series_map({key}): HTTP {r.status_code} em {server['internal']}/Items "
-                f"(provável API key errada ou sem permissão)")
+            dbg(
+                f"get_series_map({key}): HTTP {r.status_code} em "
+                f"{server['internal']}/Items (provável API key errada ou sem permissão)"
+            )
+
             if cached is not None:
-                # falhou a atualização: mantém o cache antigo em vez de zerar tudo
-                dbg(f"get_series_map({key}): mantendo cache anterior (falha ao atualizar)")
+                dbg(f"get_series_map({key}): mantendo cache anterior")
                 return cached["data"]
+
     except Exception as e:
-        dbg(f"get_series_map({key}): FALHA DE CONEXÃO com {server['internal']} -> {e}")
+        dbg(f"get_series_map({key}): FALHA DE CONEXÃO -> {e}")
         print(f"series_map error ({key}):", e)
+
         if cached is not None:
-            dbg(f"get_series_map({key}): mantendo cache anterior (falha ao atualizar)")
+            dbg(f"get_series_map({key}): mantendo cache anterior")
             return cached["data"]
 
     _series_map_cache[key] = {"data": series_map, "ts": now}
@@ -130,13 +149,15 @@ def get_series_map(server: dict) -> dict:
 
 
 def find_jellyfin_episode(server: dict, tvdb_id: int, season: int, episode: int):
-    """Retorna (item_id, server_id) do episódio no Jellyfin (servidor específico), ou (None, None)."""
+    """Retorna (item_id, server_id) do episódio no Jellyfin, ou (None, None)."""
     series_map = get_series_map(server)
     series_id = series_map.get(str(tvdb_id))
+
     if not series_id:
-        dbg(f"find_episode({server['key']}): tvdbId={tvdb_id} NÃO está no series_map "
-            f"({len(series_map)} séries no cache) -> série não existe nesse Jellyfin "
-            f"ou não tem Tvdb id preenchido")
+        dbg(
+            f"find_episode({server['key']}): tvdbId={tvdb_id} NÃO está no series_map "
+            f"({len(series_map)} séries no cache)"
+        )
         return None, None
 
     try:
@@ -149,19 +170,26 @@ def find_jellyfin_episode(server: dict, tvdb_id: int, season: int, episode: int)
             headers=auth_header(server),
             timeout=10,
         )
+
         if r.status_code != 200:
-            dbg(f"find_episode({server['key']}): HTTP {r.status_code} ao buscar episódios "
-                f"da série {series_id}")
+            dbg(
+                f"find_episode({server['key']}): HTTP {r.status_code} "
+                f"ao buscar episódios da série {series_id}"
+            )
             return None, None
 
         for ep in r.json().get("Items", []):
             if ep.get("IndexNumber") == episode:
-                dbg(f"find_episode({server['key']}): achou S{season:02d}E{episode:02d} "
-                    f"(item_id={ep['Id']})")
+                dbg(
+                    f"find_episode({server['key']}): achou "
+                    f"S{season:02d}E{episode:02d} (item_id={ep['Id']})"
+                )
                 return ep["Id"], ep.get("ServerId")
 
-        dbg(f"find_episode({server['key']}): série encontrada mas S{season:02d}E{episode:02d} "
-            f"não está na lista de episódios (talvez ainda não escaneado no Jellyfin)")
+        dbg(
+            f"find_episode({server['key']}): série encontrada, mas "
+            f"S{season:02d}E{episode:02d} não está na lista"
+        )
 
     except Exception as e:
         dbg(f"find_episode({server['key']}): FALHA DE CONEXÃO -> {e}")
@@ -187,13 +215,16 @@ def get_recent():
             },
             timeout=5,
         )
+
         if r.status_code != 200:
             return []
+
         data = r.json()
+
     except Exception:
         return []
 
-    # Pré-carrega o mapa de séries de todos os servidores de uma vez
+    # Pré-carrega o mapa de séries de todos os servidores
     for server in JELLYFIN_SERVERS:
         get_series_map(server)
 
@@ -201,12 +232,15 @@ def get_recent():
 
     for ep in data:
         air_date = ep.get("airDateUtc")
+
         if not air_date:
             continue
+
         try:
             air = datetime.fromisoformat(air_date.replace("Z", "+00:00"))
         except Exception:
             continue
+
         if air >= now and not ep.get("hasFile", False):
             continue
 
@@ -224,18 +258,17 @@ def get_recent():
 
         if item_id:
             server_id_used = item_server_id or sid
+
             jellyfin_link = (
                 f"{server['public']}/web/#/details"
                 f"?id={item_id}&context=tvshows&serverId={server_id_used}"
             )
-            # Imagem diretamente do Jellyfin (sem proxy) usando o endereço público do servidor.
-            # O browser do cliente não envia headers customizados numa tag <img>,
-            # então usamos o query param moderno "ApiKey" (não confundir com o
-            # antigo "api_key", que o Jellyfin 12+ não aceita mais).
+
             thumb_url = (
                 f"{server['public']}/Items/{item_id}/Images/Primary"
                 f"?ApiKey={server['api_key']}&fillWidth=300&quality=90"
             )
+
         else:
             jellyfin_link = server["public"]
             thumb_url = ""
@@ -257,8 +290,8 @@ def get_recent():
 
 
 # Dimensões base × 1.15
-CARD_W = 201   # 175 × 1.15
-THUMB_H = 113  # 98  × 1.15
+CARD_W = 201
+THUMB_H = 113
 
 
 def build_html(episodes):
@@ -266,12 +299,14 @@ def build_html(episodes):
         return '<p class="color-subdue">Nenhum episódio recente encontrado.</p>'
 
     items = []
+
     for ep in episodes:
         if ep["thumb"]:
             thumb_inner = (
                 f'<img src="{ep["thumb"]}" alt="" loading="lazy" '
                 f'style="width:100%;height:100%;object-fit:cover;display:block;">'
             )
+
         else:
             thumb_inner = (
                 '<div style="width:100%;height:100%;'
@@ -288,6 +323,7 @@ def build_html(episodes):
             )
 
         badge = ""
+
         if ep["has_file"]:
             badge = (
                 '<span style="position:absolute;bottom:6px;left:6px;'
@@ -302,9 +338,9 @@ def build_html(episodes):
         items.append(
             f'<li style="flex:0 0 auto;width:{CARD_W}px;">'
             f'<a href="{ep["link"]}" target="_blank" rel="noopener" '
-            f'style="display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;">'
+            f'style="display:flex;flex-direction:column;gap:8px;'
+            f'text-decoration:none;color:inherit;">'
 
-            # Thumbnail 16:9
             f'<div style="position:relative;width:{CARD_W}px;height:{THUMB_H}px;'
             f'border-radius:7px;overflow:hidden;'
             f'background:var(--color-widget-background-alt,#1e1e1e);">'
@@ -312,22 +348,19 @@ def build_html(episodes):
             f'{badge}'
             f'<span style="position:absolute;bottom:6px;right:7px;font-size:0.7rem;'
             f'padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.72);'
-            f'backdrop-filter:blur(4px);color:#fff;font-weight:600;letter-spacing:0.02em;">'
-            f'{ep["label"]}</span>'
+            f'backdrop-filter:blur(4px);color:#fff;font-weight:600;'
+            f'letter-spacing:0.02em;">{ep["label"]}</span>'
             f'</div>'
 
-            # Texto
             f'<div style="display:flex;flex-direction:column;gap:3px;padding:0 2px;">'
             f'<p class="size-h4" style="margin:0;line-height:1.3;overflow:hidden;'
-            f'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-weight:500;">'
-            f'{display_title}</p>'
+            f'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;'
+            f'font-weight:500;">{display_title}</p>'
             f'<p class="size-h6 color-subdue" style="margin:0;white-space:nowrap;'
             f'overflow:hidden;text-overflow:ellipsis;">{ep["title"]}</p>'
             f'<p class="size-h6 color-subdue" style="margin:0;">'
             f'<span data-dynamic-relative-time="{ep["unix_ts"]}"></span></p>'
-            f'</div>'
-
-            f'</a></li>'
+            f'</div></a></li>'
         )
 
     return (
@@ -343,9 +376,11 @@ def build_html(episodes):
 def home():
     episodes = get_recent()
     html_body = build_html(episodes)
+
     resp = Response(html_body, mimetype="text/html")
     resp.headers["Widget-Title"] = "Episódios Recentes"
     resp.headers["Widget-Content-Type"] = "html"
+
     return resp
 
 
@@ -355,19 +390,83 @@ def home():
 
 RECENT_MEDIA_MAX_ITEMS = 15
 RECENT_MEDIA_CACHE_TTL_SECONDS = 60
+
 _recent_media_cache = {"data": [], "ts": 0}
+_library_map_cache = {}
 
 
 def parse_jellyfin_datetime(value):
     if not value:
         return None
+
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
+
         return parsed.astimezone(timezone.utc)
+
     except (TypeError, ValueError):
         return None
+
+
+def get_library_map(server: dict) -> dict:
+    """Retorna um mapa ID da biblioteca -> nome da biblioteca no Jellyfin."""
+    key = server["key"]
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    cached = _library_map_cache.get(key)
+
+    if cached and now_ts - cached["ts"] < 15 * 60:
+        return cached["data"]
+
+    library_map = {}
+
+    try:
+        r = requests.get(
+            f"{server['internal']}/Library/VirtualFolders",
+            headers=auth_header(server),
+            timeout=10,
+        )
+
+        r.raise_for_status()
+
+        for library in r.json():
+            item_id = library.get("ItemId")
+            name = library.get("Name") or ""
+
+            if item_id and name:
+                library_map[str(item_id)] = name
+
+    except Exception as e:
+        dbg(f"get_library_map({key}): falha -> {e}")
+
+    if library_map:
+        _library_map_cache[key] = {
+            "data": library_map,
+            "ts": now_ts,
+        }
+
+    elif cached:
+        return cached["data"]
+
+    return library_map
+
+
+def classify_recent_media(item: dict, library_map: dict) -> str:
+    """Classifica filmes e animes usando o nome da biblioteca de origem."""
+
+    if item.get("Type") == "Movie":
+        return "FILME"
+
+    parent_id = str(item.get("ParentId") or "")
+    library_name = library_map.get(parent_id, "")
+
+    if "anime" in library_name.casefold():
+        return "ANIME"
+
+    return "SÉRIE"
 
 
 def get_recent_media():
@@ -392,7 +491,7 @@ def get_recent_media():
                     "SortBy": "DateCreated",
                     "SortOrder": "Descending",
                     "Limit": RECENT_MEDIA_MAX_ITEMS,
-                    "Fields": "DateCreated,ProductionYear",
+                    "Fields": "DateCreated,ProductionYear,ParentId",
                 },
                 headers=auth_header(server),
                 timeout=12,
@@ -406,6 +505,7 @@ def get_recent_media():
                 continue
 
             server_id = get_server_id(server)
+            library_map = get_library_map(server)
             public_url = server["public"].rstrip("/")
 
             for item in r.json().get("Items", []):
@@ -414,6 +514,7 @@ def get_recent_media():
 
                 created = parse_jellyfin_datetime(item.get("DateCreated"))
                 item_id = item.get("Id")
+
                 if created is None or not item_id:
                     continue
 
@@ -421,6 +522,7 @@ def get_recent_media():
                     f"{public_url}/Items/{item_id}/Images/Primary"
                     f"?ApiKey={server['api_key']}&fillWidth=300&quality=90"
                 )
+
                 jellyfin_link = (
                     f"{public_url}/web/#/details"
                     f"?id={item_id}&serverId={server_id}"
@@ -431,6 +533,10 @@ def get_recent_media():
                     "server_key": server["key"],
                     "title": item.get("Name") or "Sem título",
                     "type": item["Type"],
+                    "kind": classify_recent_media(item, library_map),
+                    "library": library_map.get(
+                        str(item.get("ParentId") or ""), ""
+                    ),
                     "year": item.get("ProductionYear"),
                     "unix_ts": int(created.timestamp()),
                     "thumb": image_url,
@@ -441,18 +547,19 @@ def get_recent_media():
             dbg(f"get_recent_media({server['key']}): falha -> {e}")
             print(f"recent_media error ({server['key']}):", e)
 
-    # Consolida os resultados dos servidores e ordena globalmente por DateCreated.
+    # Consolida os resultados dos servidores e ordena por DateCreated.
     unique = {
         (item["server_key"], item["id"]): item
         for item in collected
     }
+
     recent = sorted(
         unique.values(),
         key=lambda item: item["unix_ts"],
         reverse=True,
     )[:RECENT_MEDIA_MAX_ITEMS]
 
-    # Se todos os servidores falharem, mantém o último resultado válido em cache.
+    # Se todos os servidores falharem, mantém o último resultado válido.
     if recent:
         _recent_media_cache["data"] = recent
         _recent_media_cache["ts"] = now_ts
@@ -462,7 +569,10 @@ def get_recent_media():
 
 def build_recent_media_html(media_items):
     if not media_items:
-        return '<p class="color-subdue">Nenhum filme ou série recente encontrado.</p>'
+        return (
+            '<p class="color-subdue">'
+            'Nenhum filme ou série recente encontrado.</p>'
+        )
 
     card_width = 150
     poster_height = 225
@@ -473,8 +583,15 @@ def build_recent_media_html(media_items):
         link = escape(str(item["link"]), quote=True)
         thumb = escape(str(item["thumb"]), quote=True)
 
-        kind = "SÉRIE" if item["type"] == "Series" else "FILME"
-        year = str(item.get("year") or "")
+        kind = escape(
+            str(
+                item.get("kind")
+                or ("FILME" if item["type"] == "Movie" else "SÉRIE")
+            ),
+            quote=True,
+        )
+
+        year = escape(str(item.get("year") or ""), quote=True)
 
         poster = (
             f'<img src="{thumb}" alt="" loading="lazy" '
@@ -486,20 +603,25 @@ def build_recent_media_html(media_items):
             f'<a href="{link}" target="_blank" rel="noopener" '
             f'style="display:flex;flex-direction:column;gap:8px;'
             f'text-decoration:none;color:inherit;">'
+
             f'<div style="position:relative;width:{card_width}px;'
             f'height:{poster_height}px;border-radius:7px;overflow:hidden;'
             f'background:var(--color-widget-background-alt,#1e1e1e);">'
             f'{poster}'
+
             f'<span style="position:absolute;top:6px;left:6px;'
             f'font-size:0.65rem;padding:3px 6px;border-radius:4px;'
             f'background:rgba(0,0,0,0.75);color:#fff;font-weight:700;'
             f'letter-spacing:0.04em;">{kind}</span>'
             f'</div>'
+
             f'<div style="display:flex;flex-direction:column;gap:3px;padding:0 2px;">'
             f'<p class="size-h4" style="margin:0;line-height:1.3;'
             f'overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;'
             f'-webkit-box-orient:vertical;font-weight:500;">{title}</p>'
+
             f'<p class="size-h6 color-subdue" style="margin:0;">{year}</p>'
+
             f'<p class="size-h6 color-subdue" style="margin:0;">'
             f'<span data-dynamic-relative-time="{item["unix_ts"]}"></span></p>'
             f'</div></a></li>'
@@ -517,12 +639,14 @@ def build_recent_media_html(media_items):
 @app.route("/recent-media")
 def recent_media():
     html_body = build_recent_media_html(get_recent_media())
+
     resp = Response(html_body, mimetype="text/html")
     resp.headers["Widget-Title"] = "Adicionados Recentemente"
     resp.headers["Widget-Content-Type"] = "html"
-    return resp
 
+    return resp
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050, debug=False)
+
